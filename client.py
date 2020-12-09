@@ -19,10 +19,10 @@ TCP_FILENAME = "transfer_file_TCP.txt" # file to be sent by TCP.
 UDP_FILENAME = "transfer_file_UDP.txt" # file to be sent by UDP.
 MILISEC = 1e3 # multiplier to convert s to ms
 
-
-
 def TCP():
-    timeArray = []
+    # an array that is going to hold time difference values between 
+    # the sent packet and arrival of that packet to the server.
+    timeArray = [] 
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # create the socket.
     # I put the following line because whenever I restart the client code, 
     # although I close the socket, the connection was refused,
@@ -42,7 +42,9 @@ def TCP():
             confirmation = s.recv(1) # Receive confirmation
             end = time.time() # end measuring
             timeArray.append(end - start) # save the time measurement.
-            confirmation = bool(confirmation) # convert confirmation to bool as server sends True. Not necessary to do that, just for fun.
+             # convert confirmation to bool as server sends True. 
+             # Not necessary to do that, just for fun.
+            confirmation = bool(confirmation)
     s.close() # Be nice and close the socket so that port will not stay open.
     total = 0 # accumulator for total transmission time calculation.
     for i in timeArray:
