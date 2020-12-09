@@ -1,28 +1,28 @@
 import socket
 import sys
 
-# UDP_PORT = sys.argv[1]
-# TCP_PORT = sys.argv[2]
+# UDP_PORT = sys.argv[1] # read server listening UDP Port.
+# TCP_PORT = sys.argv[2] # read server listenin TCP Port.
 
-IP = '127.0.0.1'
-TCP_PORT = 5858
-BUFFER_SIZE = 1000
-
+IP = '127.0.0.1' # Local address to bind.
+TCP_PORT = 5858 
+CHUNK_SIZE = 1000 # Chunk size that is sent by the client. Client sends 1000 bytes, server reads 1000 bytes.
+MEGA = 1e6 # For debug purposes when checking if I received all the bytes.
 def __main__():
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((IP , TCP_PORT))
-    s.listen(1)
-    conn , addr = s.accept()
-    print(conn)
-    print(addr)
-    total = 0
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # create the socket.
+    s.bind((IP , TCP_PORT)) # bind to IP and port.
+    s.listen(1) # start listening
+    conn , addr = s.accept() # accept connection requests
+    total = 0 # a debug variable that shows how many byte is read.
     while True:
-        data = conn.recv(BUFFER_SIZE)
+        data = conn.recv(CHUNK_SIZE) # receive data.
         if not data:
-            break
-        # print("Received " + str(data))
+            break # client is done. 
+        print(data)
         total += len(data)
-    conn.close
-    print(total)
+        conn.send(bytes(True)) # send True to client to tell that 'OK, I received your message' 
+    conn.close # be nice and close the connection.
+    s.close() # be nice and close the socket.
+    print(str(total/MEGA) + " MegaBytes received") # debug
 
 __main__()
