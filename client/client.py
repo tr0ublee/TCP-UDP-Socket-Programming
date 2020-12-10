@@ -1,6 +1,10 @@
 import socket
 import sys
 import time
+'''
+    Alperen Caykus
+    2237170
+'''
 
 '''
 SERVER_IP = sys.argv[1] # read server ip
@@ -45,12 +49,14 @@ def TCP():
              # convert confirmation to bool as server sends True. 
              # Not necessary to do that, just for fun.
             confirmation = bool(confirmation)
-    s.close() # Be nice and close the socket so that port will not stay open.
+    f.close() # Be nice and close the file.
     total = 0 # accumulator for total transmission time calculation.
     for i in timeArray:
         total += i # calculate total
     print("TCP Packets Average Transmission Time: " + str(MILISEC * total/len(timeArray)) + " ms") # calculate avg in ms
     print("TCP Communication Total Transmission Time: " + str(MILISEC * total) + " ms") # calculate total in ms
+    s.close() # Be nice and close the socket so that port will not stay open.
+
 
 def UDP():
     return 0
