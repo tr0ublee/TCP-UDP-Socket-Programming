@@ -8,8 +8,8 @@ IP = '127.0.0.1' # Local address to bind.
 TCP_PORT = 5858 
 CHUNK_SIZE = 1000 # Chunk size that is sent by the client. Client sends 1000 bytes, server reads 1000 bytes.
 MEGA = 1e6 # For debug purposes when checking if I received all the bytes.
-TCP_FILENAME = "transfer_file_TCP2.txt" # file to be read by TCP.
-UDP_FILENAME = "transfer_file_UDP2.txt" # file to be read by UDP.
+TCP_FILENAME = "transfer_file_TCP.txt" # file to be read by TCP.
+UDP_FILENAME = "transfer_file_UDP.txt" # file to be read by UDP.
 def __main__():
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # create the socket.
     s.bind((IP , TCP_PORT)) # bind to IP and port.
