@@ -1,32 +1,50 @@
-import socket
-import sys
-import time
 '''
     Alperen Caykus
     2237170
 '''
+import socket
+import sys
+import time
+import struct
+from datetime import datetime
+
 
 '''
-SERVER_IP = sys.argv[1] # read server ip
-UDP_SERVER_PORT = sys.argv[2] # read UDP server listening port
-TCP_SERVER_PORT = sys.argv[3] # read TCP server listening port
-UDP_CLIENT_PORT = sys.argv[4] # read UDP client sending port
-TCP_CLIENT_PORT = sys.argv[5] # read TCP client sending port
+# read server ip
+SERVER_IP = sys.argv[1]
+# read UDP server listening port 
+UDP_SERVER_PORT = sys.argv[2]
+# read TCP server listening port 
+TCP_SERVER_PORT = sys.argv[3]
+# read UDP client sending port 
+UDP_CLIENT_PORT = sys.argv[4] 
+# read TCP client sending port
+TCP_CLIENT_PORT = sys.argv[5]
 '''
 
 SERVER_IP = '127.0.0.1'
-TCP_SERVER_PORT = 5858
-TCP_CLIENT_PORT = 2755 
+TCP_SERVER_PORT = 5856
+TCP_CLIENT_PORT = 2754 
+# Get the size of timestamps in bytes
+TIME_SIZE_IN_BYTES = sys.getsizeof(struct.pack("d",time.time()))
+# Chunk size in bytes. 
+CHUNK_SIZE = 1000 
+# file to be sent by TCP.
+TCP_FILENAME = "transfer_file_TCP.txt"
+# file to be sent by UDP.
+UDP_FILENAME = "transfer_file_UDP.txt" 
+# multiplier to convert s to ms
+MILISEC = 1e3 
 
-CHUNK_SIZE = 1000 # Chunk size in bytes.
-TCP_FILENAME = "transfer_file_TCP.txt" # file to be sent by TCP.
-UDP_FILENAME = "transfer_file_UDP.txt" # file to be sent by UDP.
-MILISEC = 1e3 # multiplier to convert s to ms
+'''
+    A function that returns timestamp in binary.
+'''
+def getBinaryTimeStamp():
+    start = time.time()
+    return struct.pack("d", start)
 
 def TCP():
-    # an array that is going to hold time difference values between 
-    # the sent packet and arrival of that packet to the server.
-    timeArray = [] 
+    # create the socket
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # create the socket.
     # I put the following line because whenever I restart the client code, 
     # although I close the socket, the connection was refused,
@@ -34,36 +52,43 @@ def TCP():
     # due to the fact that the socket is left in the TCP TIME-WAIT state.
     # The following line solves that.
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
-    s.bind((SERVER_IP, TCP_CLIENT_PORT)) # Set client's port and bind socket to SERVER_IP and TCP_CLIENT_PORT.
-    s.connect((SERVER_IP, TCP_SERVER_PORT))  # Connect to server with ip SERVER_IP and listening the port TCP_SERVER_PORT
-    with open(TCP_FILENAME, 'rb') as f: # read binary TCP file.
+    # Set client's port and bind socket to SERVER_IP and TCP_CLIENT_PORT.
+    s.bind((SERVER_IP, TCP_CLIENT_PORT)) 
+    # Connect to server with ip SERVER_IP and listening the port TCP_SERVER_PORT
+    s.connect((SERVER_IP, TCP_SERVER_PORT))  
+    # read binary TCP file.
+    with open(TCP_FILENAME, 'rb') as f: 
         while True:
-            message = f.read(CHUNK_SIZE) # read READ_SIZE (1000) bytes.
-            if not message: #  Reached to eof. We are done.
+            # read READ_SIZE (1000 - (TIME_STAMP_SIZE)) bytes. 
+            # We will add the date time information at the beginning of the message.
+            message = f.read(CHUNK_SIZE - TIME_SIZE_IN_BYTES) 
+            if not message: 
+                #  Reached to eof. We are done.
                 break
-            start = time.time() # start measuring
-            s.send(message) # Send the message that is read from the disk.
-            confirmation = s.recv(1) # Receive confirmation
-            end = time.time() # end measuring
-            timeArray.append(end - start) # save the time measurement.
-             # convert confirmation to bool as server sends True. 
-             # Not necessary to do that, just for fun.
-            confirmation = bool(confirmation)
-    f.close() # Be nice and close the file.
-    total = 0 # accumulator for total transmission time calculation.
-    for i in timeArray:
-        total += i # calculate total
-    print("TCP Packets Average Transmission Time: " + str(MILISEC * total/len(timeArray)) + " ms") # calculate avg in ms
-    print("TCP Communication Total Transmission Time: " + str(MILISEC * total) + " ms") # calculate total in ms
-    s.close() # Be nice and close the socket so that port will not stay open.
-
+            # get current time, convert it to string, then conver the string to bytes
+            start = getBinaryTimeStamp() 
+            # Send the timestamp (start) + message that is read from the disk.
+            s.sendall(start + message) 
+            # Receive confirmation
+            # If I do not put that, client sends 1000 bytes server reads more than 1000 bytes
+            # This is because, when data arrives to server, client completes the next cycle partially and
+            # writes some partial data to the message, and server consumes that as well.
+            # Another solution is putting a sleep instead of receive.
+            # I tried sleep(5) and worked.
+            # But I do not like using sleep.
+            # So instead, I receive ACK from the server, which means server consumed all the data, then client starts the next cycle. 
+            confirmation = s.recv(1) 
+    # Be nice and close the file.
+    f.close() 
+    # Close the socket so that port will not stay open.
+    s.close() 
 
 def UDP():
     return 0
 
 def __main__():
-    TCP() # Do TCP.
-    UDP() # DO UDP.
-
-
+    # Do TCP.
+    TCP() 
+    # DO UDP.
+    UDP() 
 __main__()
