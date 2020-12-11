@@ -25,6 +25,8 @@ TCP_CLIENT_PORT = sys.argv[5]
 SERVER_IP = '127.0.0.1'
 TCP_SERVER_PORT = 5856
 TCP_CLIENT_PORT = 2754 
+UDP_SERVER_PORT = 5855
+UDP_CLIENT_PORT = 2753 
 # Get the size of timestamps in bytes
 TIME_SIZE_IN_BYTES = sys.getsizeof(struct.pack("d",time.time()))
 # Chunk size in bytes. 
@@ -45,7 +47,7 @@ def getBinaryTimeStamp():
 
 def TCP():
     # create the socket
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM) # create the socket.
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # I put the following line because whenever I restart the client code, 
     # although I close the socket, the connection was refused,
     # stating that Address already in use. I learned that this is 
@@ -84,11 +86,28 @@ def TCP():
     s.close() 
 
 def UDP():
+    # create the socket 
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # Set client's port and bind socket to SERVER_IP and TCP_CLIENT_PORT.
+    s.bind((SERVER_IP, UDP_CLIENT_PORT))
+    with open(UDP_FILENAME, 'rb') as f: 
+        while True:
+            message = f.read(CHUNK_SIZE) 
+            if not message: 
+                #  Reached to eof. We are done.
+                break
+    # Be nice and close the file.
+    f.close() 
+    # Close the socket so that port will not stay open.
+    s.close() 
+
     return 0
 
 def __main__():
     # Do TCP.
     TCP() 
+    # Sleep for 1s to give time to server create the socket.
+    time.sleep(1)
     # DO UDP.
     UDP() 
 __main__()

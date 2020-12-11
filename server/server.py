@@ -14,6 +14,7 @@ import struct
 # Local address to bind.
 IP = '127.0.0.1' 
 TCP_PORT = 5856
+UDP_PORT = 5855
 # Chunk size that is sent by the client. Client sends 1000 bytes, server reads 1000 bytes.
 CHUNK_SIZE = 1000 
 # Get the length of binary timestamp string. 
@@ -31,7 +32,7 @@ MILISEC = 1e3
 def getBinaryToTime(bin):
     return struct.unpack("d", bin)[0]
 
-def __main__():
+def TCP():
     # create the socket.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # bind to IP and port. 
@@ -82,5 +83,19 @@ def __main__():
     print("TCP Packets Average Transmission Time: " + str(MILISEC * total/len(timeSeries)) + " ms") # calculate avg in ms
     # print total by sum(array) in ms
     print("TCP Communication Total Transmission Time: " + str(MILISEC * total) + " ms") # calculate total in ms
+
+def UDP():
+    # create the socket.
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # bind to IP and port. 
+    s.bind((IP , UDP_PORT))   
+    # create the file to write into.
+    f = open(UDP_FILENAME, "wb")
+def __main__():
+    # Do TCP
+    TCP()
+    # DO UDP
+    UDP()
+
 
 __main__()
