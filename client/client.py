@@ -6,6 +6,7 @@ import socket
 import sys
 import time
 import struct
+import hashlib
 from datetime import datetime
 
 
@@ -23,12 +24,12 @@ TCP_CLIENT_PORT = sys.argv[5]
 '''
 
 SERVER_IP = '127.0.0.1'
-TCP_SERVER_PORT = 5856
+TCP_SERVER_PORT = 5864
 TCP_CLIENT_PORT = 2754 
-UDP_SERVER_PORT = 5855
-UDP_CLIENT_PORT = 2753 
+UDP_SERVER_PORT = 5850
+UDP_CLIENT_PORT = 2750
 # Get the size of timestamps in bytes
-TIME_SIZE_IN_BYTES = sys.getsizeof(struct.pack("d",time.time()))
+TIME_SIZE_IN_BYTES = len(struct.pack("d",time.time()))
 # Chunk size in bytes. 
 CHUNK_SIZE = 1000 
 # file to be sent by TCP.
@@ -36,7 +37,13 @@ TCP_FILENAME = "transfer_file_TCP.txt"
 # file to be sent by UDP.
 UDP_FILENAME = "transfer_file_UDP.txt" 
 # multiplier to convert s to ms
-MILISEC = 1e3 
+MILISEC = 1e3
+# Byte count for packet number
+PACKET_NUM_SIZE_IN_BYTES = 1
+# Use big endian when necessary
+ORDER = 'big'
+MD5_ENCODE_TYPE = 'utf-8'
+MD5_BYTE_SIZE = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
 
 '''
     A function that returns timestamp in binary.
@@ -68,9 +75,11 @@ def TCP():
                 #  Reached to eof. We are done.
                 break
             # get current time, convert it to string, then conver the string to bytes
-            start = getBinaryTimeStamp() 
+            start = getBinaryTimeStamp()
+            print(start)
             # Send the timestamp (start) + message that is read from the disk.
-            s.sendall(start + message) 
+            # print(len(start + message))
+            s.sendall(start + message)
             # Receive confirmation
             # If I do not put that, client sends 1000 bytes server reads more than 1000 bytes
             # This is because, when data arrives to server, client completes the next cycle partially and
@@ -86,17 +95,41 @@ def TCP():
     s.close() 
 
 def UDP():
+    '''
+        Protocol Format: [TIMESTAMP : MD5 : PACKETNUMBER : DATA]
+    '''
     # create the socket 
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # Set client's port and bind socket to SERVER_IP and TCP_CLIENT_PORT.
     s.bind((SERVER_IP, UDP_CLIENT_PORT))
-    with open(UDP_FILENAME, 'rb') as f: 
+    sendAddress = (SERVER_IP, UDP_SERVER_PORT)
+    # read CHUNK_SIZE - TIMESIZE - PACKET NUM - CHECKSUM bytes from disk
+    readSize = CHUNK_SIZE - TIME_SIZE_IN_BYTES - PACKET_NUM_SIZE_IN_BYTES - MD5_BYTE_SIZE
+    packet = 0
+    with open(UDP_FILENAME, 'rb') as f:
         while True:
-            message = f.read(CHUNK_SIZE) 
-            if not message: 
+            data = f.read(readSize)
+            print(len(data))
+            # print("Now i read ", data[0])
+            # print(data[999])
+            if not data:
                 #  Reached to eof. We are done.
                 break
-    # Be nice and close the file.
+            # get current time, convert it to string, then conver the string to bytes
+            checksum = bytes(hashlib.md5(data).hexdigest(), MD5_ENCODE_TYPE)
+            packetNum = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
+            start = getBinaryTimeStamp()
+            message = start + checksum + packetNum + data
+            print(message)
+            print('==================')
+            s.sendto(message, sendAddress)
+            print('Start', start)
+            print('Check', checksum)
+            print('Packet', packetNum)
+            print('Data', data)
+            data, add = s.recvfrom(1)
+            time.sleep(2)
+            # Be nice and close the file.
     f.close() 
     # Close the socket so that port will not stay open.
     s.close() 
@@ -105,9 +138,7 @@ def UDP():
 
 def __main__():
     # Do TCP.
-    TCP() 
-    # Sleep for 1s to give time to server create the socket.
-    time.sleep(1)
+    # TCP()
     # DO UDP.
-    UDP() 
+    UDP()
 __main__()
