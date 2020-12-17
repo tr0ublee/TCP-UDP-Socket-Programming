@@ -9,13 +9,13 @@ import time
 import struct
 import hashlib
 
-# UDP_PORT = sys.argv[1] # read server listening UDP Port.
-# TCP_PORT = sys.argv[2] # read server listenin TCP Port.
+UDP_PORT = int(sys.argv[1]) # read server listening UDP Port.
+TCP_PORT = int(sys.argv[2]) # read server listenin TCP Port.
 
 # Local address to bind.
 IP = '127.0.0.1' 
-TCP_PORT = 5864
-UDP_PORT = 5850
+# TCP_PORT = 5864
+# UDP_PORT = 5850
 # Chunk size that is sent by the client. Client sends 1000 bytes, server reads 1000 bytes.
 CHUNK_SIZE = 1000 
 # Get the length of binary timestamp string. 
@@ -104,8 +104,6 @@ def TCP():
 ORDER = 'big'
 MD5_ENCODE_TYPE = 'utf-8'
 MD5_BYTE_LEN = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
-ACK = 1
-NACK = 0
 TIME_START = 0
 TIME_END = TIME_LENGTH
 CHKSUM_START = TIME_END
@@ -113,6 +111,9 @@ CHKSUM_END = MD5_BYTE_LEN + TIME_LENGTH
 PACKG_NUM_START = CHKSUM_END
 PACKG_NUM_END = PACKG_NUM_START + PACKET_NUM_SIZE_IN_BYTES
 DATA_START = PACKG_NUM_END
+ACK = [0, 1] #ACK0, ACK1
+NACK = 2
+
 
 
 def getChecksum(hex):
@@ -123,7 +124,9 @@ def getArrivedDataMD5(received):
 
 def doCheckSum(received):
     checksum = getChecksum(received[CHKSUM_START : CHKSUM_END])
+    # print('C ' + checksum)
     arrivedMD5 = getArrivedDataMD5(received[DATA_START:])
+    # print('A ' + arrivedMD5)
     if checksum == arrivedMD5:
         return True
     return False
@@ -138,19 +141,29 @@ def UDP(s):
     '''
     # create the file to write into.
     f = open(UDP_FILENAME, "wb")
-
     expectingPacket = 0
     reRequested = 0
     timeSeries = []
+    prevChksum = ''
     while True:
-        received, add = s.recvfrom(CHUNK_SIZE)
-        if not received:
+        s.settimeout(2)
+        try:
+            received, add = s.recvfrom(CHUNK_SIZE)
+            s.settimeout(None)
+            if not received:
+                break
+        except socket.timeout:
+            s.settimeout(None)
             break
         end = time.time()
         start = getBinaryToTime(received[TIME_START : TIME_END])
+        arrivedMD5 = getArrivedDataMD5(received[DATA_START:])
+        arrivedMD5 = bytes(arrivedMD5, MD5_ENCODE_TYPE)
         if not doCheckSum(received) or expectingPacket != getPacketNum(received):
             reRequested += 1
-            s.sendto(NACK.to_bytes(1,ORDER))
+            msg = ACK[(expectingPacket + 1) % 2].to_bytes(1, ORDER)
+            msg += prevChksum
+            s.sendto(msg, add)
             continue
         diff = end - start
         # store the difference
@@ -159,8 +172,13 @@ def UDP(s):
         data = received[DATA_START:]
         # write data into file.
         f.write(data)
+        # print('OK')
         # send True to client to tell that 'ACK, I received your message'
-        s.sendto(ACK.to_bytes(1,ORDER), add)
+        prevChksum = arrivedMD5
+        msg = ACK[expectingPacket].to_bytes(1,ORDER)
+        msg += arrivedMD5
+        s.sendto(msg, add)
+        expectingPacket = (expectingPacket + 1) % 2
 
     printTime(timeSeries, 'UDP')
     print('UDP Transmission Re-transferred Packets: ', reRequested)
@@ -172,11 +190,18 @@ def __main__():
     # bind to IP and UDP port.
     sUDP.bind((IP, UDP_PORT))
 
+    print('TCP Started')
 
     # Do TCP
-    # TCP()
+    TCP()
+    print('TCP Ended')
+
     # DO UDP
+    print('UDP Started')
+
     UDP(sUDP)
+    print('UDP Ended')
+
 
 
 __main__()
