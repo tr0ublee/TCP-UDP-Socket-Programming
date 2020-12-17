@@ -61,7 +61,7 @@ def TCP():
     # accept connection requests 
     conn , addr = s.accept()
     # create the file to write into.
-    f = open(TCP_FILENAME, "wb")
+    f = open(TCP_FILENAME, "wb+")
     # an array that holds the time difference values. Will be used to measure total and avg time.
     timeSeries = []
     while True:
@@ -140,7 +140,7 @@ def UDP(s):
        Protocol Format: [TIMESTAMP : MD5 : PACKETNUMBER : DATA]
     '''
     # create the file to write into.
-    f = open(UDP_FILENAME, "wb")
+    f = open(UDP_FILENAME, "wb+")
     expectingPacket = 0
     reRequested = 0
     timeSeries = []
