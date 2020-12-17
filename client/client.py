@@ -25,7 +25,7 @@ TCP_CLIENT_PORT = sys.argv[5]
 
 SERVER_IP = '127.0.0.1'
 TCP_SERVER_PORT = 5864
-TCP_CLIENT_PORT = 2754 
+TCP_CLIENT_PORT = 2753
 UDP_SERVER_PORT = 5850
 UDP_CLIENT_PORT = 2750
 # Get the size of timestamps in bytes
@@ -76,7 +76,6 @@ def TCP():
                 break
             # get current time, convert it to string, then conver the string to bytes
             start = getBinaryTimeStamp()
-            print(start)
             # Send the timestamp (start) + message that is read from the disk.
             # print(len(start + message))
             s.sendall(start + message)
@@ -109,7 +108,6 @@ def UDP():
     with open(UDP_FILENAME, 'rb') as f:
         while True:
             data = f.read(readSize)
-            print(len(data))
             # print("Now i read ", data[0])
             # print(data[999])
             if not data:
@@ -120,15 +118,16 @@ def UDP():
             packetNum = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
             start = getBinaryTimeStamp()
             message = start + checksum + packetNum + data
-            print(message)
-            print('==================')
+            print(len(message))
+            # print(message)
+            # print('==================')
             s.sendto(message, sendAddress)
-            print('Start', start)
-            print('Check', checksum)
-            print('Packet', packetNum)
-            print('Data', data)
-            data, add = s.recvfrom(1)
-            time.sleep(2)
+            # print('Start', start)
+            # print('Check', checksum)
+            # print('Packet', packetNum)
+            # print('Data', data)
+            # data, add = s.recvfrom(1)
+            # time.sleep(2)
             # Be nice and close the file.
     f.close() 
     # Close the socket so that port will not stay open.

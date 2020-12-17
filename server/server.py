@@ -29,15 +29,22 @@ MILISEC = 1e3
 # Byte count for packet number
 PACKET_NUM_SIZE_IN_BYTES = 1
 # Use big endian when necessary
-ORDER = 'big'
-MD5_ENCODE_TYPE = 'utf-8'
-MD5_BYTE_LEN = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
 
 '''
     Given binary timestamp, converts it to double back and returns it
 '''
 def getBinaryToTime(bin):
     return struct.unpack("d", bin)[0]
+
+def printTime(arr, type):
+    total = 0
+    for i in arr:
+        # calculate total
+        total += i
+    # print average by sum(array)/array.length in ms
+    print(type + " Packets Average Transmission Time: " + str(MILISEC * total/len(arr)) + " ms") # calculate avg in ms
+    # print total by sum(array) in ms
+    print(type + " Communication Total Transmission Time: " + str(MILISEC * total) + " ms") # calculate total in ms
 
 def TCP():
     '''
@@ -87,14 +94,43 @@ def TCP():
     # close the file
     f.close()
     # accumulator for total transmission time calculation.
-    total = 0 
-    for i in timeSeries:
-        # calculate total
-        total += i 
-    # print average by sum(array)/array.length in ms
-    print("TCP Packets Average Transmission Time: " + str(MILISEC * total/len(timeSeries)) + " ms") # calculate avg in ms
-    # print total by sum(array) in ms
-    print("TCP Communication Total Transmission Time: " + str(MILISEC * total) + " ms") # calculate total in ms
+    printTime(timeSeries, 'TCP')
+
+'''
+    UDP STARTS
+    UDP CONSTANTS
+'''
+
+ORDER = 'big'
+MD5_ENCODE_TYPE = 'utf-8'
+MD5_BYTE_LEN = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
+ACK = 1
+NACK = 0
+TIME_START = 0
+TIME_END = TIME_LENGTH
+CHKSUM_START = TIME_END
+CHKSUM_END = MD5_BYTE_LEN + TIME_LENGTH
+PACKG_NUM_START = CHKSUM_END
+PACKG_NUM_END = PACKG_NUM_START + PACKET_NUM_SIZE_IN_BYTES
+DATA_START = PACKG_NUM_END
+
+
+def getChecksum(hex):
+    return hex.decode(MD5_ENCODE_TYPE)
+
+def getArrivedDataMD5(received):
+    return hashlib.md5(received).hexdigest()
+
+def doCheckSum(received):
+    checksum = getChecksum(received[CHKSUM_START : CHKSUM_END])
+    arrivedMD5 = getArrivedDataMD5(received[DATA_START:])
+    if checksum == arrivedMD5:
+        return True
+    return False
+
+def getPacketNum(received):
+    hex =  received[PACKG_NUM_START : PACKG_NUM_END]
+    return int.from_bytes(hex, ORDER)
 
 def UDP(s):
     '''
@@ -102,31 +138,32 @@ def UDP(s):
     '''
     # create the file to write into.
     f = open(UDP_FILENAME, "wb")
-    timeStart = 0
-    timeEnd = TIME_LENGTH
-    checkSumStart = timeEnd
-    checkSumEnd = MD5_BYTE_LEN + TIME_LENGTH
-    packetNumStart = checkSumEnd
-    packetNumEnd = packetNumStart + PACKET_NUM_SIZE_IN_BYTES
-    dataStart = packetNumEnd
+
+    expectingPacket = 0
+    reRequested = 0
+    timeSeries = []
     while True:
         received, add = s.recvfrom(CHUNK_SIZE)
+        if not received:
+            break
         end = time.time()
-        start = received[timeStart:timeEnd]
-        print('Start', start)
+        start = getBinaryToTime(received[TIME_START : TIME_END])
+        if not doCheckSum(received) or expectingPacket != getPacketNum(received):
+            reRequested += 1
+            s.sendto(NACK.to_bytes(1,ORDER))
+            continue
+        diff = end - start
+        # store the difference
+        timeSeries.append(diff)
+        # read the actual data.
+        data = received[DATA_START:]
+        # write data into file.
+        f.write(data)
+        # send True to client to tell that 'ACK, I received your message'
+        s.sendto(ACK.to_bytes(1,ORDER), add)
 
-        # convert binary timeStamp to double
-        start = getBinaryToTime(start)
-        checksum = received[checkSumStart : checkSumEnd]
-        print('Check', checksum)
-        packetNumber = received[packetNumStart : packetNumEnd]
-        print('Pack', packetNumber)
-        data = received[dataStart:]
-        print('Data', data)
-        s.sendto(bytes(1), add)
-
-
-
+    printTime(timeSeries, 'UDP')
+    print('UDP Transmission Re-transferred Packets: ', reRequested)
     s.close()
     f.close()
 def __main__():
