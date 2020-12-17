@@ -64,15 +64,19 @@ def TCP():
     f = open(TCP_FILENAME, "wb+")
     # an array that holds the time difference values. Will be used to measure total and avg time.
     timeSeries = []
-    while True:
+    buff = ''.encode(MD5_ENCODE_TYPE)
+    while len(buff) < CHUNK_SIZE:
+        buff += conn.recv(CHUNK_SIZE - len(buff))
         # read CHUNK_SIZE bytes (1000 bytes). 
         # received is in the form timeStamp + actual data
-        received = conn.recv(CHUNK_SIZE)
+        # received = conn.recv(CHUNK_SIZE)
         # get the current time.
         end = time.time() 
-        if not received:
+        if not buff:
             # client is done
-            break 
+            break
+        received = buff[0 : CHUNK_SIZE]
+        buff = buff[CHUNK_SIZE:]
         # extract the timeStamp that the client had sent
         start = received[0:TIME_LENGTH]
         # convert binary timeStamp to double
@@ -86,7 +90,7 @@ def TCP():
         # write data into file.
         f.write(data)
         # send True to client to tell that 'ACK, I received your message' 
-        conn.send(bytes(True)) 
+        # conn.send(bytes(True))
     # close the connection.
     conn.close() 
     # close the socket.

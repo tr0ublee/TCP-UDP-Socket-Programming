@@ -87,7 +87,7 @@ def TCP():
             # I tried sleep(5) and worked.
             # But I do not like using sleep.
             # So instead, I receive ACK from the server, which means server consumed all the data, then client starts the next cycle. 
-            confirmation = s.recv(1) 
+            # confirmation = s.recv(1)
     # Be nice and close the file.
     f.close() 
     # Close the socket so that port will not stay open.
