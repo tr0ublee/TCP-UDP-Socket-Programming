@@ -8,7 +8,7 @@ import time
 import struct
 import hashlib
 from datetime import datetime
-
+# import select
 
 # read server ip
 SERVER_IP = sys.argv[1]
@@ -48,8 +48,12 @@ TIMEOUT = 1 # in s
 '''
     A function that returns timestamp in binary.
 '''
+num = 0
 def getBinaryTimeStamp():
     start = time.time()
+    global num
+    # print(num, start)
+    num += 1
     return struct.pack("d", start)
 
 def TCP():
@@ -76,9 +80,13 @@ def TCP():
                 break
             # get current time, convert it to string, then conver the string to bytes
             start = getBinaryTimeStamp()
+            # print('Start ', start)
+            
             # Send the timestamp (start) + message that is read from the disk.
             # print(len(start + message))
-            s.sendall(start + message)
+            # print(start + message)
+            s.send(start + message)
+            # time.sleep(0.05)
             # Receive confirmation
             # If I do not put that, client sends 1000 bytes server reads more than 1000 bytes
             # This is because, when data arrives to server, client completes the next cycle partially and
@@ -95,21 +103,22 @@ def TCP():
 
 '''
     UDP STARTS
-'''
+''' 
 ACK = [0, 1] #ACK0, ACK1
 NACK = 2
 
 def sendUDPMsg(s, data, packet, address):
-    checksum = bytes(hashlib.md5(data).hexdigest(), MD5_ENCODE_TYPE)
     packetNum = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
     start = getBinaryTimeStamp()
-    message = start + checksum + packetNum + data
+    tmp = start + packetNum + data
+    checksum = bytes(hashlib.md5(tmp).hexdigest(), MD5_ENCODE_TYPE)
+    message = checksum + start + packetNum + data
     s.sendto(message, address)
-    return checksum
+    return message
 
 def UDP():
     '''
-        Protocol Format: [TIMESTAMP : MD5 : PACKETNUMBER : DATA]
+        Protocol Format: [MD5 : TIMESTAMP : PACKETNUMBER : DATA]
     '''
     # create the socket 
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -120,32 +129,58 @@ def UDP():
     readSize = CHUNK_SIZE - TIME_SIZE_IN_BYTES - PACKET_NUM_SIZE_IN_BYTES - MD5_BYTE_SIZE
     packet = 0
     readNew = True
-    tmp = 0
+    tmp = False
+    i = 0
     with open(UDP_FILENAME, 'rb') as f:
         while True:
-            if readNew:
+            if readNew or not tmp:
                 data = f.read(readSize)
+                print('READ ',i)
+                i += 1
+
                 tmp = data
                 if not data:
                     break
             else:
+                # print('RESEND ',i)
                 data = tmp
             readNew = True
-            sendChk = sendUDPMsg(s, data, packet, sendAddress)
-            s.settimeout(TIMEOUT)
+            sent = sendUDPMsg(s, data, packet, sendAddress)
+            # time.sleep(3)
+            # s.settimeout(TIMEOUT)
             try:
-                res, add = s.recvfrom(MD5_BYTE_SIZE + 1)
-                echoMD5 = res[1:]
-                ackNum = res[0]
-            except socket.timeout:
+                # while True:
+                s.settimeout(TIMEOUT)
+                res = s.recv(MD5_BYTE_SIZE + 1)
+                # print('R ',res)
+                ackNum = res[0:1]
+                # print(ackNum)
+                echoMD5 = res[1: MD5_BYTE_SIZE + 1]
+                ackMD5 = bytes(hashlib.md5(ackNum).hexdigest(), MD5_ENCODE_TYPE)
+                ackNum = int.from_bytes(ackNum, ORDER)
+                # print('E ',echoMD5)
+                # print('A ',ackMD5)
+                if ackMD5 != echoMD5 or packet != ackNum:
+                    s.settimeout(None)
+                    readNew = False
+                    continue
+
+            except (UnicodeDecodeError,TypeError):
                 s.settimeout(None)
                 readNew = False
                 continue
-            s.settimeout(None)
-            if ackNum != ACK[packet] or echoMD5 != sendChk:
+
+            except IndexError:
+                s.settimeout(None)
                 readNew = False
                 continue
-
+            except socket.timeout:
+                s.settimeout(None)
+                # print('TIMED OUT')
+                readNew = False
+                continue
+            s.settimeout(None)
+            readNew = True
             packet = (packet + 1) % 2
 
 
