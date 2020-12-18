@@ -133,11 +133,10 @@ def UDP():
     i = 0
     with open(UDP_FILENAME, 'rb') as f:
         while True:
+            # print('SA')
             if readNew or not tmp:
                 data = f.read(readSize)
-                print('READ ',i)
-                i += 1
-
+                print(data)
                 tmp = data
                 if not data:
                     break
@@ -148,10 +147,10 @@ def UDP():
             sent = sendUDPMsg(s, data, packet, sendAddress)
             # time.sleep(3)
             # s.settimeout(TIMEOUT)
+            # s.settimeout(TIMEOUT)
             try:
                 # while True:
-                s.settimeout(TIMEOUT)
-                res = s.recv(MD5_BYTE_SIZE + 1)
+                res, add = s.recvfrom(MD5_BYTE_SIZE + 1)
                 # print('R ',res)
                 ackNum = res[0:1]
                 # print(ackNum)
@@ -167,17 +166,22 @@ def UDP():
 
             except (UnicodeDecodeError,TypeError):
                 s.settimeout(None)
+                print('a')
                 readNew = False
                 continue
 
             except IndexError:
                 s.settimeout(None)
                 readNew = False
+                print('b')
+                
                 continue
             except socket.timeout:
                 s.settimeout(None)
                 # print('TIMED OUT')
                 readNew = False
+                print('c')
+                
                 continue
             s.settimeout(None)
             readNew = True

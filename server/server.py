@@ -166,18 +166,17 @@ def UDP(s):
     expectingPacket = 0
     timeSeries = []
     prev = None
-    i = 0
     while True:
-        # s.settimeout(2)
-        # try:
-        received, add = s.recvfrom(CHUNK_SIZE)
+        try:
+            s.settimeout(5)
+            received, add = s.recvfrom(CHUNK_SIZE)
         # print(received)
         # s.settimeout(None)
-        if not received:
+            if not received:
+                break
+        except socket.timeout:
+            s.settimeout(None)
             break
-        # except socket.timeout:
-        #     s.settimeout(None)
-        #     break
         end = time.time()
         start = getBinaryToTime(received[TIME_START : TIME_END])
         arrivedMD5 = getArrivedDataMD5(received[CHKSUM_END:])
@@ -189,7 +188,7 @@ def UDP(s):
         # time.sleep(3)
         notCorrupt = doCheckSum(received)
 
-        if len(received) != CHUNK_SIZE or not notCorrupt or (notCorrupt and expectingPacket != getPacketNum(received)):
+        if not notCorrupt or (notCorrupt and expectingPacket != getPacketNum(received)):
             otherPacket = (expectingPacket + 1) % 2
             msg = makeACK(otherPacket)
             s.sendto(msg, add)
@@ -201,8 +200,6 @@ def UDP(s):
         data = received[DATA_START:]
         # write data into file.
         f.write(data)
-        print(i)
-        i += 1
         # print('OK')
         # send True to client to tell that 'ACK, I received your message'
         prev = data
