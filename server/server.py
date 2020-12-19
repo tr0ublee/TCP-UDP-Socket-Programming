@@ -36,7 +36,7 @@ def getBinaryToTime(bin):
     # print(struct.unpack("d", bin))
     return struct.unpack("d", bin)[0]
 
-def printTime(arr, type):
+def printTime(arr, type,first, last):
     total = 0
     global MILISEC
     for i in arr:
@@ -45,7 +45,7 @@ def printTime(arr, type):
     # print average by sum(array)/array.length in ms
     print(type + " Packets Average Transmission Time: " + str(MILISEC * total/len(arr)) + " ms") # calculate avg in ms
     # print total by sum(array) in ms
-    print(type + " Communication Total Transmission Time: " + str(MILISEC * total) + " ms") # calculate total in ms
+    print(type + " Communication Total Transmission Time: " + str(MILISEC * (last - first)) + " ms") # calculate total in ms
 
 def TCP():
     '''
@@ -65,7 +65,9 @@ def TCP():
     # an array that holds the time difference values. Will be used to measure total and avg time.
     timeSeries = []
     buff = ''.encode(MD5_ENCODE_TYPE)
-
+    getFirst = True
+    first = 0
+    last = 0
     num = 0
     while True:
         while len(buff) < CHUNK_SIZE:
@@ -73,7 +75,8 @@ def TCP():
             if not read:
                 break
             buff += read
-        end = time.time() 
+        end = time.time()
+        last = end 
         if not buff:
             # client and server is done
             break
@@ -82,10 +85,14 @@ def TCP():
         buff = ''.encode(MD5_ENCODE_TYPE)
         # extract the timeStamp that the client had sent
         start = received[0:TIME_LENGTH]
+
         # print('Start ', start)
        
         # convert binary timeStamp to double
         start = getBinaryToTime(start)
+        if getFirst:
+            getFirst = False
+            first = start
         # print(num ,start)
         num += 1
 
@@ -107,7 +114,7 @@ def TCP():
     s.close() 
     # close the file
     f.close()
-    printTime(timeSeries, 'TCP')
+    printTime(timeSeries, 'TCP', first, last)
 
 '''
     UDP STARTS
@@ -167,9 +174,10 @@ def UDP():
     s.bind((IP, UDP_PORT))
     f = open(UDP_FILENAME, "wb+")
     timeSeries = []
-    prev = None
-    read = []
     expecting = 1
+    getFirst = True
+    first = 0
+    last = 0
     while True:
         try:
             s.settimeout(12)
@@ -178,51 +186,44 @@ def UDP():
             s.settimeout(None)
             break
         end = time.time()
+        last = end
         notCorrupt = doCheckSum(received)
         if notCorrupt:
             gotPacket = getPacketNum(received)
+            start = getBinaryToTime(received[TIME_START : TIME_END])
+            if getFirst:
+                getFirst = False
+                first = start
+            diff = end - start
             if expecting == gotPacket:
-                start = getBinaryToTime(received[TIME_START : TIME_END])
-                diff = end - start
                 # store the difference
                 timeSeries.append(diff)
                 # read the actual data.
                 data = received[DATA_START:]
                 # write data into file.
-                read.append(received)
                 f.write(data)
                 msg = makeACK(expecting)
                 s.sendto(msg, add)
                 expecting += 1
             else:
+                timeSeries.pop()
+                timeSeries.append(diff)
                 msg = makeACK(gotPacket)
                 s.sendto(msg, add)
         else:
             msg = makeACK(0)
             s.sendto(msg, add)
-    total  = 0
-    for i in range(len(read)):
-        for j in range(len(read)):
-            if i != j:
-                if read[i] == read[j]:
-                    print(i, j)
-    print(total)
-    printTime(timeSeries, 'UDP')
+    printTime(timeSeries, 'UDP', first, last)
     s.close()
     f.close()
 def __main__():
     # create the UDP socket first so that we can directly start UDP after TCP ends.
-
-
     print('TCP Started')
-
     # Do TCP
     TCP()
     print('TCP Ended')
-
     # DO UDP
     print('UDP Started')
-
     UDP()
     print('UDP Ended')
 

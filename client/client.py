@@ -135,6 +135,7 @@ def UDP():
     # read CHUNK_SIZE - TIMESIZE - PACKET NUM - CHECKSUM bytes from disk
     readSize = CHUNK_SIZE - TIME_SIZE_IN_BYTES - PACKET_NUM_SIZE_IN_BYTES - MD5_BYTE_SIZE
     packet = 1
+    resent = 0
     with open(UDP_FILENAME, 'rb') as f:
         while True:
             # print('SA')
@@ -142,10 +143,10 @@ def UDP():
             if not data:
                 break
             acked = False
-            msg = makeMsg(data, packet)
             shouldSend = True
             while not acked:
                 if shouldSend:
+                    msg = makeMsg(data, packet)
                     s.sendto(msg, sendAddress)
                 s.settimeout(TIMEOUT)
                 try:
@@ -166,10 +167,12 @@ def UDP():
                             acked = True
                             packet += 1
                         elif ackNum == 0:
+                            resent += 1
                             shouldSend = True
                         else:
                             shouldSend = False
                     else:
+                        resent += 1
                         shouldSend = True
                 except socket.timeout:
                     shouldSend = True
@@ -180,7 +183,7 @@ def UDP():
                 
             s.settimeout(None)
   
-
+    print('UDP Transmission Re-transferred Packets: ', resent)
     # Be nice and close the file.
     f.close() 
     # Close the socket so that port will not stay open.
