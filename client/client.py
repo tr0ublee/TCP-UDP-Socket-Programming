@@ -145,12 +145,18 @@ def UDP():
                     # client times out or
                     # server receives corrupted data or
                     # a packet is lost.
-                    # Send the message again. 
+                    # Send the message. 
                     msg = makeMsg(data, packet)
                     s.sendto(msg, sendAddress)
                 # start the timer
                 s.settimeout(TIMEOUT)
                 try:
+                    if isExiting:
+                        # best effort as suggested by one of our TA.
+                        # client sends it termination message and leaves without caring if the server received or not.
+                        # If server does not receive, server will terminate by timing out.
+                        s.settimeout(None)
+                        break
                     # recaive data in the format [ACKnum + MD5 OF PACKET]
                     res = s.recv(MD5_BYTE_SIZE + PACKET_NUM_SIZE_IN_BYTES)
                     # clear the timer
@@ -167,9 +173,6 @@ def UDP():
                         # received packet is not corrupted.  
                         if packet == ackNum:
                             # transmitted the current packet correctly. Move.
-                            if isExiting:
-                                # if client state is in exit, then break the loop.
-                                break     
                             # set shouldSend just in case as now we will send the next packet.
                             shouldSend = True
                             # received acknowledgement. Set it to break the loop.
@@ -188,27 +191,18 @@ def UDP():
                     else:
                         # client received a corrupt packet.
                         # Send the same data just in case client received a corrupt packet as well.
-                        if isExiting:
-                            # client received some gibberish but it was gonna exit anyway.
-                            # Best effort. Server may still be running.
-                            break
                         # resend the packet in case the server received bad data as well.
                         resent += 1
                         shouldSend = True
                 except (UnicodeDecodeError,TypeError, IndexError, socket.timeout):
                     s.settimeout(None)
-                    if isExiting:
-                        # BYE message is delayed but server is already dead. Kill the client
-                        break
-                    else:
-                        # Client did not receive any message and timer interrupt occured. Resend the same packet in case 
-                        # the packet is lost.
-                        resent += 1
-                        shouldSend = True
+                    # Client did not receive any message and timer interrupt occured or packet was corrupt and 
+                    # parse failed . Resend the same packet in case the packet is lost.
+                    resent += 1
+                    shouldSend = True
             if isExiting:
                 # Byee
                 break   
-                
             s.settimeout(None)
   
     # print resent packets.

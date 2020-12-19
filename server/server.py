@@ -222,13 +222,18 @@ def UDP():
     # holds the last time stamp.
     last = 0
     while True:
-        # try:
-            # s.settimeout(12)
-        # receive 1000 bytes
-        received, add = s.recvfrom(CHUNK_SIZE)
-        # except socket.timeout:
-            # s.settimeout(None)
-            # break
+        s.settimeout(SERVER_TERMINATE)
+        try:
+            # receive 1000 bytes
+            received, add = s.recvfrom(CHUNK_SIZE)
+            s.settimeout(None)
+        except socket.timeout:
+            # No message arrived in SERVER_TERMINATE seconds.
+            # Client must have been terminated.
+            # Terminate the server process
+            s.settimeout(None)
+            break
+        s.settimeout(None)
         # get the current time stamp.
         end = time.time()
         # set the last to current so that 
@@ -266,9 +271,6 @@ def UDP():
                 # NACK is used special here.
                 # Client sent NACK, which means client sent all the packets and now it is going to terminate.
                 # terminate server as well.
-                msg = makeACK(NACK)
-                # send ACK for NACK.
-                s.sendto(msg,add)
                 break
             else:
                 '''
