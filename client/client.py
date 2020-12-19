@@ -7,8 +7,6 @@ import sys
 import time
 import struct
 import hashlib
-from datetime import datetime
-# import select
 
 # read server ip
 SERVER_IP = sys.argv[1]
@@ -21,51 +19,32 @@ UDP_CLIENT_PORT = int(sys.argv[4])
 # read TCP client sending port
 TCP_CLIENT_PORT = int(sys.argv[5])
 
-
-# SERVER_IP = '127.0.0.1'
-# TCP_SERVER_PORT = 5864
-# TCP_CLIENT_PORT = 2753
-# UDP_SERVER_PORT = 5850
-# UDP_CLIENT_PORT = 2750
 # Get the size of timestamps in bytes
 TIME_SIZE_IN_BYTES = len(struct.pack("d",time.time()))
 # Chunk size in bytes. 
 CHUNK_SIZE = 1000 
 # file to be sent by TCP.
 TCP_FILENAME = "transfer_file_TCP.txt"
-# file to be sent by UDP.
-UDP_FILENAME = "transfer_file_UDP.txt" 
-# multiplier to convert s to ms
-MILISEC = 1e3
-# Byte count for packet number
-PACKET_NUM_SIZE_IN_BYTES = 8
-# Use big endian when necessary
-ORDER = 'big'
-MD5_ENCODE_TYPE = 'utf-8'
-MD5_BYTE_SIZE = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
-TIMEOUT = 1 # in s
+
 
 '''
-    A function that returns timestamp in binary.
+    A function that returns timestamps in binary.
 '''
-num = 0
 def getBinaryTimeStamp():
     start = time.time()
-    global num
-    # print(num, start)
-    num += 1
     return struct.pack("d", start)
 
 def TCP():
+    '''
+        PROTOCOL: [TIMESTAMP | MESSAGE]
+    '''
     # create the socket
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     # I put the following line because whenever I restart the client code, 
     # although I close the socket, the connection was refused,
-    # stating that Address already in use. I learned that this is 
-    # due to the fact that the socket is left in the TCP TIME-WAIT state.
-    # The following line solves that.
+    # stating that Address already in use.
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
-    # Set client's port and bind socket to SERVER_IP and TCP_CLIENT_PORT.
+    # Set client's port and bind socket to SERVER_IP.
     s.bind((SERVER_IP, TCP_CLIENT_PORT)) 
     # Connect to server with ip SERVER_IP and listening the port TCP_SERVER_PORT
     s.connect((SERVER_IP, TCP_SERVER_PORT))  
@@ -79,23 +58,9 @@ def TCP():
                 #  Reached to eof. We are done.
                 break
             # get current time, convert it to string, then conver the string to bytes
-            start = getBinaryTimeStamp()
-            # print('Start ', start)
-            
+            start = getBinaryTimeStamp()            
             # Send the timestamp (start) + message that is read from the disk.
-            # print(len(start + message))
-            # print(start + message)
             s.send(start + message)
-            # time.sleep(0.05)
-            # Receive confirmation
-            # If I do not put that, client sends 1000 bytes server reads more than 1000 bytes
-            # This is because, when data arrives to server, client completes the next cycle partially and
-            # writes some partial data to the message, and server consumes that as well.
-            # Another solution is putting a sleep instead of receive.
-            # I tried sleep(5) and worked.
-            # But I do not like using sleep.
-            # So instead, I receive ACK from the server, which means server consumed all the data, then client starts the next cycle. 
-            # confirmation = s.recv(1)
     # Be nice and close the file.
     f.close() 
     # Close the socket so that port will not stay open.
@@ -104,17 +69,29 @@ def TCP():
 '''
     UDP STARTS
 ''' 
-ACK = [0, 1] #ACK0, ACK1
-NACK = 2
+# file to be sent by UDP.
+UDP_FILENAME = "transfer_file_UDP.txt" 
+'''
+    Variables for protocol boundaries as I use a fixed-length protocol
+'''
+# Byte count for packet number.  I use that in my protocol as index when accessing packet number
+PACKET_NUM_SIZE_IN_BYTES = 8
+# Use big endian when encoding the integers
+ORDER = 'big'
+# Use UTF-8 when encoding strings (since MD5 is also represented as a string)
+MD5_ENCODE_TYPE = 'utf-8'
+# Size of an encoded MD5. I use that in my protocol as index when accessing MD5.
+MD5_BYTE_SIZE = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
+# timeout value
+TIMEOUT = 1 
+# special NACK value. Since in my implementation, packet numbers start from 1, I chose 0 to be a special value.
+NACK = 0
 
-def sendUDPMsg(s, data, packet, address):
-    packetNum = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
-    start = getBinaryTimeStamp()
-    tmp = start + packetNum + data
-    checksum = bytes(hashlib.md5(tmp).hexdigest(), MD5_ENCODE_TYPE)
-    message = checksum + start + packetNum + data
-    s.sendto(message, address)
-    return message
+'''
+    Given data and packet number, that function produces an output in the form
+    [MD5 : TIMESTAMP : PACKETNUMBER : DATA] that can directly be sent over the socket.
+    Note that MD5 hashes the timestamp + packetnumber + data part.
+'''
 def makeMsg(data, packet):
     packetNum = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
     start = getBinaryTimeStamp()
@@ -125,70 +102,121 @@ def makeMsg(data, packet):
 
 def UDP():
     '''
-        Protocol Format: [MD5 : TIMESTAMP : PACKETNUMBER : DATA]
+        PROTOCOL: [MD5 : TIMESTAMP : PACKETNUMBER : DATA]
     '''
     # create the socket 
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # Set client's port and bind socket to SERVER_IP and TCP_CLIENT_PORT.
+    # Set client's port and bind socket to SERVER_IP and UDP_CLIENT_PORT.
     s.bind((SERVER_IP, UDP_CLIENT_PORT))
+    # create the destination Tupple, which contains server's listening UDP port and server IP.
     sendAddress = (SERVER_IP, UDP_SERVER_PORT)
     # read CHUNK_SIZE - TIMESIZE - PACKET NUM - CHECKSUM bytes from disk
     readSize = CHUNK_SIZE - TIME_SIZE_IN_BYTES - PACKET_NUM_SIZE_IN_BYTES - MD5_BYTE_SIZE
+    # first packet that will be sent
     packet = 1
+    # counter that holds number of resent packets.
     resent = 0
+    # a state indircator if the client is done or not.
+    isExiting = False
     with open(UDP_FILENAME, 'rb') as f:
         while True:
-            # print('SA')
+            # read data with size CHUNK_SIZE - TIMESIZE - PACKET NUM - CHECKSUM bytes from disk 
             data = f.read(readSize)
             if not data:
-                break
+                # EOF. Set state to exiting.
+                isExiting = True
+                # Use NACK as BYE message. 
+                # When client sends NACK, it means client is leaving.
+                # When server sends NACK, it means the data sent from client was corrupted.
+                packet = NACK
+                # Padding for BYE message.
+                data = bytes(readSize)
+            # read packet is not acked.
             acked = False
+            # should send indicates if the client should do a listen or send.
+            # when delays arrive, we should discard them and wait for the actual message. 
+            # So, we dont need to send the message again. This variable handles this.
             shouldSend = True
             while not acked:
+                # Loop until packet is acked.
                 if shouldSend:
+                    # Either clients sends it first message 
+                    # or client receives corrupted ACK or
+                    # client times out or
+                    # server receives corrupted data or
+                    # a packet is lost.
+                    # Send the message again. 
                     msg = makeMsg(data, packet)
                     s.sendto(msg, sendAddress)
+                # start the timer
                 s.settimeout(TIMEOUT)
                 try:
-                    # while True:
+                    # recaive data in the format [ACKnum + MD5 OF PACKET]
                     res = s.recv(MD5_BYTE_SIZE + PACKET_NUM_SIZE_IN_BYTES)
+                    # clear the timer
                     s.settimeout(None)
-                    # print('R ',res)
+                    # get the ACKnum
                     ackNum = res[0:PACKET_NUM_SIZE_IN_BYTES]
-                    # print(ackNum)
+                    # get the MD5 part of the received packet
                     echoMD5 = res[PACKET_NUM_SIZE_IN_BYTES: MD5_BYTE_SIZE + PACKET_NUM_SIZE_IN_BYTES]
+                    # rehash ackNum to check if received packet is corrupted.
                     ackMD5 = bytes(hashlib.md5(ackNum).hexdigest(), MD5_ENCODE_TYPE)
+                    # convert acknum to int to be more user friendly.
                     ackNum = int.from_bytes(ackNum, ORDER)
-                    # print('E ',echoMD5)
-                    # print('A ',ackMD5)
-                    if ackMD5 == echoMD5:                        
+                    if ackMD5 == echoMD5:                 
+                        # received packet is not corrupted.  
                         if packet == ackNum:
+                            # transmitted the current packet correctly. Move.
+                            if isExiting:
+                                # if client state is in exit, then break the loop.
+                                break     
+                            # set shouldSend just in case as now we will send the next packet.
                             shouldSend = True
+                            # received acknowledgement. Set it to break the loop.
                             acked = True
+                            # Set packet to next packet.
                             packet += 1
-                        elif ackNum == 0:
+                        # As I said, when server sends NACK, it means server received corrupt data.
+                        elif ackNum == NACK:
+                            # increment counter and set shouldSend to send the same packet again.
                             resent += 1
                             shouldSend = True
                         else:
+                            # A previously delayed packet arrived. Discard it. Keep listening to socket.
+                            # Dont send new data since server might be sending an answer.
                             shouldSend = False
                     else:
+                        # client received a corrupt packet.
+                        # Send the same data just in case client received a corrupt packet as well.
+                        if isExiting:
+                            # client received some gibberish but it was gonna exit anyway.
+                            # Best effort. Server may still be running.
+                            break
+                        # resend the packet in case the server received bad data as well.
                         resent += 1
                         shouldSend = True
-                except socket.timeout:
-                    shouldSend = True
+                except (UnicodeDecodeError,TypeError, IndexError, socket.timeout):
                     s.settimeout(None)
-                except (UnicodeDecodeError,TypeError, IndexError):
-                    shouldSend = True
-                    s.settimeout(None)
+                    if isExiting:
+                        # BYE message is delayed but server is already dead. Kill the client
+                        break
+                    else:
+                        # Client did not receive any message and timer interrupt occured. Resend the same packet in case 
+                        # the packet is lost.
+                        resent += 1
+                        shouldSend = True
+            if isExiting:
+                # Byee
+                break   
                 
             s.settimeout(None)
   
+    # print resent packets.
     print('UDP Transmission Re-transferred Packets: ', resent)
     # Be nice and close the file.
     f.close() 
     # Close the socket so that port will not stay open.
     s.close() 
-
     return 0
 
 def __main__():
@@ -201,4 +229,5 @@ def __main__():
     UDP()
     print('UDP Ended')
 
+# Call main
 __main__()

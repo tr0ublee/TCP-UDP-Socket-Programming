@@ -4,7 +4,6 @@
 '''
 import socket
 import sys
-from datetime import datetime
 import time
 import struct
 import hashlib
@@ -12,22 +11,16 @@ import hashlib
 UDP_PORT = int(sys.argv[1]) # read server listening UDP Port.
 TCP_PORT = int(sys.argv[2]) # read server listenin TCP Port.
 
-# Local address to bind.
-IP = '127.0.0.1' 
-# TCP_PORT = 5864
-# UDP_PORT = 5850
+# Address to bind.
+IP = '' 
 # Chunk size that is sent by the client. Client sends 1000 bytes, server reads 1000 bytes.
 CHUNK_SIZE = 1000 
-# Get the length of binary timestamp string. 
+# Get the size of timestamps in bytes
 TIME_LENGTH = len(struct.pack("d",time.time()))
-# file to be read by TCP. 
+# file to be written on by TCP. 
 TCP_FILENAME = "transfer_file_TCP.txt"
-# file to be read by UDP. 
-UDP_FILENAME = "transfer_file_UDP.txt"
 # multiplier to convert s to ms 
 MILISEC = 1e3
-# Byte count for packet number
-# Use big endian when necessary
 
 '''
     Given binary timestamp, converts it to double back and returns it
@@ -35,7 +28,9 @@ MILISEC = 1e3
 def getBinaryToTime(bin):
     # print(struct.unpack("d", bin))
     return struct.unpack("d", bin)[0]
-
+'''
+    Given time array, first time stamp and last time stamp, prints the time information.
+'''
 def printTime(arr, type,first, last):
     total = 0
     global MILISEC
@@ -53,6 +48,9 @@ def TCP():
     '''
     # create the socket.
     s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    # I put the following line because whenever I restart the client code, 
+    # although I close the socket, the connection was refused,
+    # stating that Address already in use.
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     # bind to IP and port. 
     s.bind((IP , TCP_PORT))
@@ -64,160 +62,241 @@ def TCP():
     f = open(TCP_FILENAME, "wb+")
     # an array that holds the time difference values. Will be used to measure total and avg time.
     timeSeries = []
+    # Since TCP is a stream, reads and writes onto socket can be asymmetric.
+    # I personally experienced this where client was sending less data than it wass supposed to send
+    # because it was sending some chunks in the previous iteration.
+    # To solve this, I first sent ACK from server to client, but since simulator does not support this
+    # I needed to remove it and implemented a buffer.
     buff = ''.encode(MD5_ENCODE_TYPE)
+    # A boolean to differentatie first time stamp from the other time stamps.
     getFirst = True
+    # holds the first time stamp.
     first = 0
+    # holds the last time stamp.
     last = 0
-    num = 0
     while True:
         while len(buff) < CHUNK_SIZE:
+            # read the socket until buffer size becomes 1000 bytes (CHUNK SIZE)
+            # The reasoin is already explained.
             read = conn.recv(CHUNK_SIZE - len(buff))
             if not read:
+                # no data arrived, client is done.
                 break
             buff += read
+        # measure the current time.
         end = time.time()
+        # save the last measured timestamp.
         last = end 
         if not buff:
             # client and server is done
+            # terminate.
             break
-        # buff = buff[CHUNK_SIZE:]
+        # start consuming the buffer
         received = buff
+        # reset the buffer.
         buff = ''.encode(MD5_ENCODE_TYPE)
         # extract the timeStamp that the client had sent
         start = received[0:TIME_LENGTH]
-
-        # print('Start ', start)
-       
         # convert binary timeStamp to double
         start = getBinaryToTime(start)
         if getFirst:
+            # first packet arrived. 
+            # Save its timestamp to calculate total time.
             getFirst = False
             first = start
-        # print(num ,start)
-        num += 1
-
-        # print('Endss ', end)
-        # take time differences
+        # take time differences (i.e, time taken by the packet)
         diff = end - start 
-        # print('Diffs', diff)
         #store the difference
         timeSeries.append(diff) 
         # read the actual data.
         data = received[TIME_LENGTH : ]
         # write data into file.
         f.write(data)
-        # send True to client to tell that 'ACK, I received your message' 
-        # conn.send(bytes(True))
     # close the connection.
     conn.close() 
     # close the socket.
     s.close() 
     # close the file
     f.close()
+    # print time.
     printTime(timeSeries, 'TCP', first, last)
 
 '''
     UDP STARTS
-    UDP CONSTANTS
 '''
-
+# Use big endian when encoding the integers
 ORDER = 'big'
+# Use UTF-8 when encoding strings (since MD5 is also represented as a string)
 MD5_ENCODE_TYPE = 'utf-8'
+# Size of an encoded MD5. I use that in my protocol as index when accessing MD5.
 MD5_BYTE_LEN = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
-
+# file to be read by UDP. 
+UDP_FILENAME = "transfer_file_UDP.txt"
+# Byte count for packet number.  I use that in my protocol as index when accessing packet number
 PACKET_NUM_SIZE_IN_BYTES = 8
+# Index that indicates start position of MD5 in my protocol.
 CHKSUM_START = 0
+# Index that indicates end position of MD5 in my protocol.
 CHKSUM_END = MD5_BYTE_LEN 
+# Index that indicates start position of timestamp in my protocol.
 TIME_START = CHKSUM_END
+# Index that indicates end position of timestamp in my protocol.
 TIME_END = CHKSUM_END + TIME_LENGTH
+# Index that indicates start position of package number in my protocol.
 PACKG_NUM_START = TIME_END
+# Index that indicates end position of package number in my protocol.
 PACKG_NUM_END = PACKG_NUM_START + PACKET_NUM_SIZE_IN_BYTES
+# Index that indicates start position of actual data in my protocol.
 DATA_START = PACKG_NUM_END
-ACK = [0, 1] #ACK0, ACK1
-NACK = 2
+# special NACK value. Since in my implementation, packet numbers start from 1, I chose 0 to be a special value.
+# I explain NACK in client core in more details.
+NACK = 0
+# terminate server in SERVER_TERMINATE seconds if no message arrives
+SERVER_TERMINATE = 13
 
 
 
+'''
+    Given an MD5 in hex, convert it to string MD5
+'''
 def getChecksum(hex):
     return hex.decode(MD5_ENCODE_TYPE)
-
+'''
+    Get the MD5 of received packet
+'''
 def getArrivedDataMD5(received):
     return hashlib.md5(received).hexdigest()
-
+'''
+    A function that checks if the received packet is corrupt or not.
+'''
 def doCheckSum(received):
     try:
+        # Get the checksum value in the received packet
         checksum = getChecksum(received[CHKSUM_START : CHKSUM_END])
+        # Get the checksum of received in the received packet.
+        # Exclude MD5 part as MD5 in the packet encodes timestamp, data and packet number.
+        # This is also explained in client.
         arrivedMD5 = getArrivedDataMD5(received[CHKSUM_END:])
     except (UnicodeDecodeError,IndexError):
+        '''
+            Either something is not in order or length does not match.
+            So, smth is corrupted.
+        '''
         return False
     if checksum == arrivedMD5:
+        # Not corrupt.
         return True
+    # Corrupt again.
     return False
-
+'''
+    Given received packet, extracts the packet number and returns it in integer.
+'''
 def getPacketNum(received):
     hex =  received[PACKG_NUM_START : PACKG_NUM_END]
     return int.from_bytes(hex, ORDER)
-
+'''
+    Given packet number, creates the ACK message for that.
+    returns in the format [ACKnumber + MD5 of ACKnumber]
+    Directly can be sent over the socket.
+'''
 def makeACK(packet):
     msg = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
     msg += bytes(hashlib.md5(msg).hexdigest(), MD5_ENCODE_TYPE)
-    # print(msg)
     return msg
 
 def UDP():
     '''
        Protocol Format: [MD5 : TIMESTAMP : PACKETNUMBER : DATA]
     '''
-    # create the file to write into.
+    # create the socket
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     # bind to IP and UDP port.
     s.bind((IP, UDP_PORT))
+    # open file to write received data.
     f = open(UDP_FILENAME, "wb+")
+    # store time differences to calculate the avg time.
     timeSeries = []
+    # Indicates which packet the server is expecting.
     expecting = 1
+    # A boolean to differentatie first time stamp from the other time stamps.
     getFirst = True
+    # holds the first time stamp.
     first = 0
+    # holds the last time stamp.
     last = 0
     while True:
-        try:
-            s.settimeout(12)
-            received, add = s.recvfrom(CHUNK_SIZE)
-        except socket.timeout:
-            s.settimeout(None)
-            break
+        # try:
+            # s.settimeout(12)
+        # receive 1000 bytes
+        received, add = s.recvfrom(CHUNK_SIZE)
+        # except socket.timeout:
+            # s.settimeout(None)
+            # break
+        # get the current time stamp.
         end = time.time()
+        # set the last to current so that 
+        # when this loop exits, last holds the last timestamp.
         last = end
+        # check if the received packet is corrupt or not.
         notCorrupt = doCheckSum(received)
         if notCorrupt:
+            # extract the packet information.
             gotPacket = getPacketNum(received)
+            # get the timestamp of the packet.
             start = getBinaryToTime(received[TIME_START : TIME_END])
             if getFirst:
+                # first packet arrived. get its timestamp.
                 getFirst = False
+                # store it.
                 first = start
+            # calculate the time difference.
             diff = end - start
             if expecting == gotPacket:
+                # got the packet I was expecting.
                 # store the difference
                 timeSeries.append(diff)
                 # read the actual data.
                 data = received[DATA_START:]
                 # write data into file.
                 f.write(data)
+                # create ACK for packet #expecting.
                 msg = makeACK(expecting)
+                # send the ACK.
                 s.sendto(msg, add)
+                # start expecting the next chunk.
                 expecting += 1
+            elif gotPacket == NACK:
+                # NACK is used special here.
+                # Client sent NACK, which means client sent all the packets and now it is going to terminate.
+                # terminate server as well.
+                msg = makeACK(NACK)
+                # send ACK for NACK.
+                s.sendto(msg,add)
+                break
             else:
+                '''
+                    Server is ahead of client. Client thinks server did not get the previous packet.
+                    Inform client that previous packet was correct.
+                    Update the timestamp as PDF says so.
+                '''
                 timeSeries.pop()
                 timeSeries.append(diff)
                 msg = makeACK(gotPacket)
                 s.sendto(msg, add)
         else:
-            msg = makeACK(0)
+            '''
+                Received a corrupt packet. Send NACK and request the same packet again.
+            '''
+            msg = makeACK(NACK)
+            # send the NACK.
             s.sendto(msg, add)
+    # print time stuff.
     printTime(timeSeries, 'UDP', first, last)
+    # close the socket.
     s.close()
+    # close the file
     f.close()
 def __main__():
-    # create the UDP socket first so that we can directly start UDP after TCP ends.
     print('TCP Started')
     # Do TCP
     TCP()
@@ -226,7 +305,5 @@ def __main__():
     print('UDP Started')
     UDP()
     print('UDP Ended')
-
-
 
 __main__()
