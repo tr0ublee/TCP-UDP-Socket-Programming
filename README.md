@@ -24,6 +24,7 @@ For those reasons, setting a delay value more than 13 may cause issues in my cod
 
 I implemented a server and a client. Both can communicate over TCP and UDP. Client sends a file over the socket and server reconstructs the file. 
 Since UDP is a lossy protocol, I also implemented a RDT to make UDP lossless.
+As an extra step, for UDP, I used MD5 hash to verify data integrity (i.e, as checksum) since MD5 is a hashing algorithm that is commonly used to determine data integrity.
 
 # 3- Which Part Did I Start With?
 
