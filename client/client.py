@@ -44,8 +44,8 @@ def TCP():
     # although I close the socket, the connection was refused,
     # stating that Address already in use.
     s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) 
-    # Set client's port and bind socket to SERVER_IP.
-    s.bind((SERVER_IP, TCP_CLIENT_PORT)) 
+    # Set client's port and bind.
+    s.bind(('', TCP_CLIENT_PORT)) 
     # Connect to server with ip SERVER_IP and listening the port TCP_SERVER_PORT
     s.connect((SERVER_IP, TCP_SERVER_PORT))  
     # read binary TCP file.
@@ -106,8 +106,8 @@ def UDP():
     '''
     # create the socket 
     s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # Set client's port and bind socket to SERVER_IP and UDP_CLIENT_PORT.
-    s.bind((SERVER_IP, UDP_CLIENT_PORT))
+    # Set client's port and bind.
+    s.bind(('', UDP_CLIENT_PORT))
     # create the destination Tupple, which contains server's listening UDP port and server IP.
     sendAddress = (SERVER_IP, UDP_SERVER_PORT)
     # read CHUNK_SIZE - TIMESIZE - PACKET NUM - CHECKSUM bytes from disk
