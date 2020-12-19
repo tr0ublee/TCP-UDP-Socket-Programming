@@ -206,7 +206,7 @@ def UDP():
             s.settimeout(None)
   
     # print resent packets.
-    print('UDP Transmission Re-transferred Packets: ', resent)
+    print('UDP Transmission Re-transferred Packets: ' + str(resent))
     # Be nice and close the file.
     f.close() 
     # Close the socket so that port will not stay open.
