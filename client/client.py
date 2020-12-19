@@ -38,7 +38,7 @@ UDP_FILENAME = "transfer_file_UDP.txt"
 # multiplier to convert s to ms
 MILISEC = 1e3
 # Byte count for packet number
-PACKET_NUM_SIZE_IN_BYTES = 1
+PACKET_NUM_SIZE_IN_BYTES = 8
 # Use big endian when necessary
 ORDER = 'big'
 MD5_ENCODE_TYPE = 'utf-8'
@@ -134,7 +134,7 @@ def UDP():
     sendAddress = (SERVER_IP, UDP_SERVER_PORT)
     # read CHUNK_SIZE - TIMESIZE - PACKET NUM - CHECKSUM bytes from disk
     readSize = CHUNK_SIZE - TIME_SIZE_IN_BYTES - PACKET_NUM_SIZE_IN_BYTES - MD5_BYTE_SIZE
-    packet = 0
+    packet = 1
     with open(UDP_FILENAME, 'rb') as f:
         while True:
             # print('SA')
@@ -143,31 +143,42 @@ def UDP():
                 break
             acked = False
             msg = makeMsg(data, packet)
+            shouldSend = True
             while not acked:
-                s.sendto(msg, sendAddress)
+                if shouldSend:
+                    s.sendto(msg, sendAddress)
                 s.settimeout(TIMEOUT)
                 try:
                     # while True:
-                    res = s.recv(MD5_BYTE_SIZE + 1)
+                    res = s.recv(MD5_BYTE_SIZE + PACKET_NUM_SIZE_IN_BYTES)
                     s.settimeout(None)
                     # print('R ',res)
-                    ackNum = res[0:1]
+                    ackNum = res[0:PACKET_NUM_SIZE_IN_BYTES]
                     # print(ackNum)
-                    echoMD5 = res[1: MD5_BYTE_SIZE + 1]
+                    echoMD5 = res[PACKET_NUM_SIZE_IN_BYTES: MD5_BYTE_SIZE + PACKET_NUM_SIZE_IN_BYTES]
                     ackMD5 = bytes(hashlib.md5(ackNum).hexdigest(), MD5_ENCODE_TYPE)
                     ackNum = int.from_bytes(ackNum, ORDER)
                     # print('E ',echoMD5)
                     # print('A ',ackMD5)
-                    if ackMD5 == echoMD5 and packet == ackNum:
-                        acked = True
+                    if ackMD5 == echoMD5:                        
+                        if packet == ackNum:
+                            shouldSend = True
+                            acked = True
+                            packet += 1
+                        elif ackNum == 0:
+                            shouldSend = True
+                        else:
+                            shouldSend = False
+                    else:
+                        shouldSend = True
                 except socket.timeout:
-                    print('TIME')
+                    shouldSend = True
                     s.settimeout(None)
                 except (UnicodeDecodeError,TypeError, IndexError):
+                    shouldSend = True
                     s.settimeout(None)
                 
             s.settimeout(None)
-            packet = 1 - packet
   
 
     # Be nice and close the file.

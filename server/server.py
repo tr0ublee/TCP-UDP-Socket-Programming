@@ -118,7 +118,7 @@ ORDER = 'big'
 MD5_ENCODE_TYPE = 'utf-8'
 MD5_BYTE_LEN = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
 
-PACKET_NUM_SIZE_IN_BYTES = 1
+PACKET_NUM_SIZE_IN_BYTES = 8
 CHKSUM_START = 0
 CHKSUM_END = MD5_BYTE_LEN 
 TIME_START = CHKSUM_END
@@ -166,10 +166,10 @@ def UDP():
     # bind to IP and UDP port.
     s.bind((IP, UDP_PORT))
     f = open(UDP_FILENAME, "wb+")
-    expectingPacket = 0
     timeSeries = []
     prev = None
     read = []
+    expecting = 1
     while True:
         try:
             s.settimeout(12)
@@ -180,7 +180,8 @@ def UDP():
         end = time.time()
         notCorrupt = doCheckSum(received)
         if notCorrupt:
-            if expectingPacket == getPacketNum(received):
+            gotPacket = getPacketNum(received)
+            if expecting == gotPacket:
                 start = getBinaryToTime(received[TIME_START : TIME_END])
                 diff = end - start
                 # store the difference
@@ -190,17 +191,15 @@ def UDP():
                 # write data into file.
                 read.append(received)
                 f.write(data)
-                msg = makeACK(expectingPacket)
+                msg = makeACK(expecting)
                 s.sendto(msg, add)
-                expectingPacket = 1 - expectingPacket
+                expecting += 1
             else:
-                neg = 1 - expectingPacket
-                msg = makeACK(neg)
+                msg = makeACK(gotPacket)
                 s.sendto(msg, add)
         else:
-            neg = 1 - expectingPacket
-            msg = makeACK(neg)
-            s.sendto(msg,add)
+            msg = makeACK(0)
+            s.sendto(msg, add)
     total  = 0
     for i in range(len(read)):
         for j in range(len(read)):
