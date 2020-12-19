@@ -115,6 +115,13 @@ def sendUDPMsg(s, data, packet, address):
     message = checksum + start + packetNum + data
     s.sendto(message, address)
     return message
+def makeMsg(data, packet):
+    packetNum = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
+    start = getBinaryTimeStamp()
+    tmp = start + packetNum + data
+    checksum = bytes(hashlib.md5(tmp).hexdigest(), MD5_ENCODE_TYPE)
+    message = checksum + start + packetNum + data
+    return message
 
 def UDP():
     '''
@@ -128,65 +135,40 @@ def UDP():
     # read CHUNK_SIZE - TIMESIZE - PACKET NUM - CHECKSUM bytes from disk
     readSize = CHUNK_SIZE - TIME_SIZE_IN_BYTES - PACKET_NUM_SIZE_IN_BYTES - MD5_BYTE_SIZE
     packet = 0
-    readNew = True
-    tmp = False
-    i = 0
     with open(UDP_FILENAME, 'rb') as f:
         while True:
             # print('SA')
-            if readNew or not tmp:
-                data = f.read(readSize)
-                print(data)
-                tmp = data
-                if not data:
-                    break
-            else:
-                # print('RESEND ',i)
-                data = tmp
-            readNew = True
-            sent = sendUDPMsg(s, data, packet, sendAddress)
-            # time.sleep(3)
-            # s.settimeout(TIMEOUT)
-            # s.settimeout(TIMEOUT)
-            try:
-                # while True:
-                res, add = s.recvfrom(MD5_BYTE_SIZE + 1)
-                # print('R ',res)
-                ackNum = res[0:1]
-                # print(ackNum)
-                echoMD5 = res[1: MD5_BYTE_SIZE + 1]
-                ackMD5 = bytes(hashlib.md5(ackNum).hexdigest(), MD5_ENCODE_TYPE)
-                ackNum = int.from_bytes(ackNum, ORDER)
-                # print('E ',echoMD5)
-                # print('A ',ackMD5)
-                if ackMD5 != echoMD5 or packet != ackNum:
+            data = f.read(readSize)
+            if not data:
+                break
+            acked = False
+            msg = makeMsg(data, packet)
+            while not acked:
+                s.sendto(msg, sendAddress)
+                s.settimeout(TIMEOUT)
+                try:
+                    # while True:
+                    res = s.recv(MD5_BYTE_SIZE + 1)
                     s.settimeout(None)
-                    readNew = False
-                    continue
-
-            except (UnicodeDecodeError,TypeError):
-                s.settimeout(None)
-                print('a')
-                readNew = False
-                continue
-
-            except IndexError:
-                s.settimeout(None)
-                readNew = False
-                print('b')
+                    # print('R ',res)
+                    ackNum = res[0:1]
+                    # print(ackNum)
+                    echoMD5 = res[1: MD5_BYTE_SIZE + 1]
+                    ackMD5 = bytes(hashlib.md5(ackNum).hexdigest(), MD5_ENCODE_TYPE)
+                    ackNum = int.from_bytes(ackNum, ORDER)
+                    # print('E ',echoMD5)
+                    # print('A ',ackMD5)
+                    if ackMD5 == echoMD5 and packet == ackNum:
+                        acked = True
+                except socket.timeout:
+                    print('TIME')
+                    s.settimeout(None)
+                except (UnicodeDecodeError,TypeError, IndexError):
+                    s.settimeout(None)
                 
-                continue
-            except socket.timeout:
-                s.settimeout(None)
-                # print('TIMED OUT')
-                readNew = False
-                print('c')
-                
-                continue
             s.settimeout(None)
-            readNew = True
-            packet = (packet + 1) % 2
-
+            packet = 1 - packet
+  
 
     # Be nice and close the file.
     f.close() 

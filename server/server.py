@@ -27,7 +27,6 @@ UDP_FILENAME = "transfer_file_UDP.txt"
 # multiplier to convert s to ms 
 MILISEC = 1e3
 # Byte count for packet number
-PACKET_NUM_SIZE_IN_BYTES = 1
 # Use big endian when necessary
 
 '''
@@ -119,6 +118,7 @@ ORDER = 'big'
 MD5_ENCODE_TYPE = 'utf-8'
 MD5_BYTE_LEN = len(bytes(hashlib.md5(''.encode('utf-8')).hexdigest(), MD5_ENCODE_TYPE))
 
+PACKET_NUM_SIZE_IN_BYTES = 1
 CHKSUM_START = 0
 CHKSUM_END = MD5_BYTE_LEN 
 TIME_START = CHKSUM_END
@@ -152,69 +152,68 @@ def getPacketNum(received):
     return int.from_bytes(hex, ORDER)
 
 def makeACK(packet):
-    msg = packet.to_bytes(1,ORDER)
+    msg = packet.to_bytes(PACKET_NUM_SIZE_IN_BYTES, ORDER)
     msg += bytes(hashlib.md5(msg).hexdigest(), MD5_ENCODE_TYPE)
     # print(msg)
     return msg
 
-def UDP(s):
+def UDP():
     '''
        Protocol Format: [MD5 : TIMESTAMP : PACKETNUMBER : DATA]
     '''
     # create the file to write into.
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    # bind to IP and UDP port.
+    s.bind((IP, UDP_PORT))
     f = open(UDP_FILENAME, "wb+")
     expectingPacket = 0
     timeSeries = []
     prev = None
+    read = []
     while True:
         try:
-            s.settimeout(5)
+            s.settimeout(12)
             received, add = s.recvfrom(CHUNK_SIZE)
-        # print(received)
-        # s.settimeout(None)
-            if not received:
-                break
         except socket.timeout:
             s.settimeout(None)
             break
         end = time.time()
-        start = getBinaryToTime(received[TIME_START : TIME_END])
-        arrivedMD5 = getArrivedDataMD5(received[CHKSUM_END:])
-        arrivedMD5 = bytes(arrivedMD5, MD5_ENCODE_TYPE)
-        # print(received[CHKSUM_START : CHKSUM_END])
-        # print(received[TIME_START : TIME_END])
-        # print(received[PACKG_NUM_START : PACKG_NUM_END])
-        # print(received[DATA_START : ])
-        # time.sleep(3)
         notCorrupt = doCheckSum(received)
-
-        if not notCorrupt or (notCorrupt and expectingPacket != getPacketNum(received)):
-            otherPacket = (expectingPacket + 1) % 2
-            msg = makeACK(otherPacket)
-            s.sendto(msg, add)
-            continue
-        diff = end - start
-        # store the difference
-        timeSeries.append(diff)
-        # read the actual data.
-        data = received[DATA_START:]
-        # write data into file.
-        f.write(data)
-        # print('OK')
-        # send True to client to tell that 'ACK, I received your message'
-        prev = data
-        msg = makeACK(expectingPacket)
-        s.sendto(msg, add)
-        expectingPacket = (expectingPacket + 1) % 2
-
+        if notCorrupt:
+            if expectingPacket == getPacketNum(received):
+                start = getBinaryToTime(received[TIME_START : TIME_END])
+                diff = end - start
+                # store the difference
+                timeSeries.append(diff)
+                # read the actual data.
+                data = received[DATA_START:]
+                # write data into file.
+                read.append(received)
+                f.write(data)
+                msg = makeACK(expectingPacket)
+                s.sendto(msg, add)
+                expectingPacket = 1 - expectingPacket
+            else:
+                neg = 1 - expectingPacket
+                msg = makeACK(neg)
+                s.sendto(msg, add)
+        else:
+            neg = 1 - expectingPacket
+            msg = makeACK(neg)
+            s.sendto(msg,add)
+    total  = 0
+    for i in range(len(read)):
+        for j in range(len(read)):
+            if i != j:
+                if read[i] == read[j]:
+                    print(i, j)
+    print(total)
     printTime(timeSeries, 'UDP')
     s.close()
     f.close()
 def __main__():
     # create the UDP socket first so that we can directly start UDP after TCP ends.
-    sUDP = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    # bind to IP and UDP port.
-    sUDP.bind((IP, UDP_PORT))
+
 
     print('TCP Started')
 
@@ -225,7 +224,7 @@ def __main__():
     # DO UDP
     print('UDP Started')
 
-    UDP(sUDP)
+    UDP()
     print('UDP Ended')
 
 
