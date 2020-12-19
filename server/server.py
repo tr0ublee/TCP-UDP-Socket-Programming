@@ -28,18 +28,17 @@ MILISEC = 1e3
 def getBinaryToTime(bin):
     return struct.unpack("d", bin)[0]
 '''
-    Given time array, first time stamp and last time stamp, prints the time information.
+    Given time array, returns avg
 '''
-def printTime(arr, type,first, last):
-    total = 0
+def getAvgTime(arr):
     global MILISEC
+    if len(arr) == 0:
+        return 0
+    total = 0
     for i in arr:
         # calculate total
         total += i
-    # print average by sum(array)/array.length in ms
-    print(type + " Packets Average Transmission Time: " + str(MILISEC * total/len(arr)) + " ms") # calculate avg in ms
-    # print total by sum(array) in ms
-    print(type + " Communication Total Transmission Time: " + str(MILISEC * (last - first)) + " ms") # calculate total in ms
+    return MILISEC * total/len(arr)
 
 def TCP():
     '''
@@ -117,8 +116,11 @@ def TCP():
     s.close() 
     # close the file
     f.close()
-    # print time.
-    printTime(timeSeries, 'TCP', first, last)
+    global MILISEC
+    total = last - first
+    total = MILISEC * total
+    # return avg transmission time
+    return getAvgTime(timeSeries), total 
 
 '''
     UDP STARTS
@@ -289,16 +291,26 @@ def UDP():
             msg = makeACK(NACK)
             # send the NACK.
             s.sendto(msg, add)
-    # print time stuff.
-    printTime(timeSeries, 'UDP', first, last)
     # close the socket.
     s.close()
     # close the file
     f.close()
+    total = last - first
+    global MILISEC
+    total = MILISEC * total
+    # return avg time and total
+    return getAvgTime(timeSeries), total
 def __main__():
+    global MILISEC
     # Do TCP
-    TCP()
+    tcpAvg, tcpTotal = TCP()
     # DO UDP
-    UDP()
+    udpAvg, udpTotal = UDP()
+    # print averages
+    print("TCP Packets Average Transmission Time: " + str(tcpAvg) + " ms") # calculate avg in ms
+    print("UDP Packets Average Transmission Time: " + str(udpAvg) + " ms") # calculate avg in ms
+    # print totals
+    print("TCP Communication Total Transmission Time: " + str(tcpTotal) + " ms") # calculate total in ms
+    print("UDP Communication Total Transmission Time: " + str(udpTotal) + " ms") # calculate total in ms
 
 __main__()

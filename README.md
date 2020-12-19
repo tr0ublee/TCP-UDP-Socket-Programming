@@ -17,7 +17,7 @@ $ python3 client.py 127.0.0.1 15595 15596 15591 15592
 ```
 
 >> **IMPORTANT**: 
-To close the server side UDP socket, I defined a timeout variable (SERVER_TIMEOUT = 13) in the server code. This means, if no data is received in 13 seconds, server UDP function returns as it thinks the client has terminated. This also means that the UDP time prints will be done after 13 seconds. 
+To close the server side UDP socket, I defined a timeout variable (SERVER_TIMEOUT = 13) in the server code. This means, if no data is received in 13 seconds, server UDP function returns as it thinks the client has terminated. This also means that the all the time prints will be done after at max 13 seconds. 
 For those reasons, setting a delay value more than 13 may cause issues in my code. **Hence, the last parameter of simulator must be less than 3.** The server timeout value can be changed by changing the referred variable. Also, server may terminate in less than 13 seconds as explained in section 'Which Problems Did I Face?'
 
 # 2- What Have I Done?
