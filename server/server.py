@@ -26,7 +26,6 @@ MILISEC = 1e3
     Given binary timestamp, converts it to double back and returns it
 '''
 def getBinaryToTime(bin):
-    # print(struct.unpack("d", bin))
     return struct.unpack("d", bin)[0]
 '''
     Given time array, first time stamp and last time stamp, prints the time information.
@@ -153,8 +152,6 @@ DATA_START = PACKG_NUM_END
 NACK = 0
 # terminate server in SERVER_TERMINATE seconds if no message arrives
 SERVER_TERMINATE = 13
-
-
 
 '''
     Given an MD5 in hex, convert it to string MD5
@@ -297,13 +294,9 @@ def UDP():
     # close the file
     f.close()
 def __main__():
-    print('TCP Started')
     # Do TCP
     TCP()
-    print('TCP Ended')
     # DO UDP
-    print('UDP Started')
     UDP()
-    print('UDP Ended')
 
 __main__()

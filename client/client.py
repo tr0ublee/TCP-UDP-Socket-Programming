@@ -221,13 +221,8 @@ def UDP():
 
 def __main__():
     # Do TCP.
-    print('TCP Started')
     TCP()
-    print('TCP Ended')
-    print('UDP Started')
     # DO UDP.
     UDP()
-    print('UDP Ended')
-
 # Call main
 __main__()
